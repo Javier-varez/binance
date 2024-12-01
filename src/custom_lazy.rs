@@ -30,38 +30,33 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Clone)]
 struct Cursor<'a> {
-    data: &'a str,
     iter: std::str::Chars<'a>,
     current_char: Option<char>,
 }
 
 impl<'a> Cursor<'a> {
-    pub fn new(data: &'a str) -> Self {
+    fn new(data: &'a str) -> Self {
         let mut iter = data.chars();
         // Initialize the cursor to point to the first non-whitespace character
         let mut current_char = iter.next();
         while current_char.is_some_and(|c| c.is_ascii_whitespace()) {
             current_char = iter.next();
         }
-        Self {
-            data,
-            iter,
-            current_char,
-        }
+        Self { iter, current_char }
     }
 
-    pub fn advance_character(&mut self) {
+    fn advance_character(&mut self) {
         self.current_char = self.iter.next();
     }
 
-    pub fn advance_token(&mut self) {
+    fn advance_token(&mut self) {
         self.advance_character();
         while self.current_char.is_some_and(|c| c.is_ascii_whitespace()) {
             self.advance_character()
         }
     }
 
-    pub fn advance_value(&mut self) -> Result<()> {
+    fn advance_value(&mut self) -> Result<()> {
         let Some(current_char) = self.current_char else {
             // End of file
             return Ok(());
@@ -96,10 +91,10 @@ impl<'a> Cursor<'a> {
             _ => return Err(Error::UnexpectedValue(current_char)),
         }
 
-        return Ok(());
+        Ok(())
     }
 
-    pub fn advance_object(&mut self) -> Result<()> {
+    fn advance_object(&mut self) -> Result<()> {
         self.advance_token();
 
         loop {
@@ -126,7 +121,7 @@ impl<'a> Cursor<'a> {
         }
     }
 
-    pub fn advance_string(&mut self) -> Result<()> {
+    fn advance_string(&mut self) -> Result<()> {
         self.advance_character();
 
         loop {
@@ -153,7 +148,7 @@ impl<'a> Cursor<'a> {
         }
     }
 
-    pub fn advance_and_match_string(&mut self, s: &str) -> Result<bool> {
+    fn advance_and_match_string(&mut self, s: &str) -> Result<bool> {
         self.advance_character();
 
         let mut s_iter = s.chars();
@@ -180,7 +175,7 @@ impl<'a> Cursor<'a> {
         }
     }
 
-    pub fn advance_and_get_string(&mut self) -> Result<&'a str> {
+    fn advance_and_get_string(&mut self) -> Result<&'a str> {
         let start = self.iter.clone();
 
         self.advance_character();
@@ -208,7 +203,7 @@ impl<'a> Cursor<'a> {
         }
     }
 
-    pub fn advance_number(&mut self) -> Result<()> {
+    fn advance_number(&mut self) -> Result<()> {
         // we already know the first char is belongs to the number, ignore it
         self.advance_character();
 
@@ -234,7 +229,7 @@ impl<'a> Cursor<'a> {
         }
     }
 
-    pub fn get_char(&self) -> Option<char> {
+    fn get_char(&self) -> Option<char> {
         self.current_char
     }
 }
@@ -271,7 +266,7 @@ impl<'a> Document<'a> {
     /// Note that there would be more methods to cast the current document to other object types.
     /// For simplicity, given that they are not needed for this challenge, I did not add them.
     pub fn as_array(self) -> Result<Array<'a>> {
-        if !self.cursor.get_char().is_some_and(|c| c == '[') {
+        if self.cursor.get_char().is_none_or(|c| c != '[') {
             return Err(Error::NotAnArray);
         }
         Ok(Array {
@@ -314,7 +309,7 @@ impl<'a> Array<'a> {
 
 impl<'a> GenericNode<'a> {
     pub fn as_array(self) -> Result<Array<'a>> {
-        if !self.cursor.get_char().is_some_and(|c| c == '[') {
+        if self.cursor.get_char().is_none_or(|c| c != '[') {
             return Err(Error::NotAnArray);
         }
         Ok(Array {
@@ -324,7 +319,7 @@ impl<'a> GenericNode<'a> {
     }
 
     pub fn as_object(self) -> Result<Object<'a>> {
-        if !self.cursor.get_char().is_some_and(|c| c == '{') {
+        if self.cursor.get_char().is_none_or(|c| c != '{') {
             return Err(Error::NotAnObject);
         }
         Ok(Object {
@@ -334,10 +329,10 @@ impl<'a> GenericNode<'a> {
     }
 
     pub fn as_number(self) -> Result<Number<'a>> {
-        if !self
+        if self
             .cursor
             .get_char()
-            .is_some_and(|c| c == '-' || c.is_ascii_digit())
+            .is_none_or(|c| c != '-' && !c.is_ascii_digit())
         {
             return Err(Error::NotANumber);
         }
@@ -348,7 +343,7 @@ impl<'a> GenericNode<'a> {
     }
 
     pub fn as_string(self) -> Result<String<'a>> {
-        if !self.cursor.get_char().is_some_and(|c| c == '"') {
+        if self.cursor.get_char().is_none_or(|c| c != '"') {
             return Err(Error::NotAString);
         }
         Ok(String {
@@ -370,7 +365,7 @@ impl<'a> Object<'a> {
 
             let match_found = cursor.advance_and_match_string(s)?;
 
-            if !cursor.current_char.is_some_and(|c| c == ':') {
+            if cursor.current_char.is_none_or(|c| c != ':') {
                 return Err(Error::UnterminatedObject);
             }
             cursor.advance_token();
@@ -391,7 +386,7 @@ impl<'a> Object<'a> {
     }
 }
 
-impl<'a> Number<'a> {
+impl Number<'_> {
     pub fn get_value(&self) -> u64 {
         todo!()
     }
@@ -400,7 +395,7 @@ impl<'a> Number<'a> {
 impl<'a> String<'a> {
     pub fn get_value(&self) -> Result<&'a str> {
         let mut cursor = self.cursor.clone();
-        Ok(cursor.advance_and_get_string()?)
+        cursor.advance_and_get_string()
     }
 
     pub fn get_value_as_f64(&self) -> Result<f64> {

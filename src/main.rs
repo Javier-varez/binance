@@ -6,23 +6,19 @@ fn get_ticker_price_change(base_endpoint: &str) -> anyhow::Result<String> {
     }
     let request = request.error_for_status()?;
 
-    return Ok(request.text()?);
+    Ok(request.text()?)
 }
 
 fn main() -> anyhow::Result<()> {
-    // let endpoint_result = std::fs::read("request.txt")?;
-    // let endpoint_result = std::str::from_utf8(&endpoint_result[..])?;
-
     let endpoint_result = get_ticker_price_change("https://eapi.binance.com")?;
 
-    let price_changes = binance::naive::parse(&endpoint_result)?;
+    let price_changes = binance::custom::parse(&endpoint_result)?;
     for i in &price_changes {
         println!("{:#?}", i);
     }
-    println!("count: {}", price_changes.len());
 
     // An example showing how to use the lazy API.
-    let document = binance::very_lazy::Document::new(&endpoint_result);
+    let document = binance::custom_lazy::Document::new(&endpoint_result);
     let symbol = document
         .as_array()?
         .get_index(0)?

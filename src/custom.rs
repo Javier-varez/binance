@@ -3,6 +3,8 @@
 
 use std::mem::MaybeUninit;
 
+use crate::utils::{LazyF64, LazyU64};
+
 #[derive(thiserror::Error, Debug, Clone)]
 /// The error type used for the json module.
 pub enum Error {
@@ -32,6 +34,8 @@ pub enum Error {
     NotAJsonObject,
     #[error("Unknown field {0}")]
     UnknownField(String),
+    #[error("Cannot get value out of non-string and non-integer type")]
+    InvalidTokenType,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -116,12 +120,17 @@ impl<'a> TokenIter<'a> {
         while let Some((i, c)) = self.iter.next() {
             match c {
                 '\\' => {
-                    // consume next
-                    self.iter.next();
+                    // escape sequence
+                    if self.iter.next().is_some_and(|(_, c)| c == 'u') {
+                        for _ in 0..4 {
+                            // consume 4 hex digits
+                            self.iter.next();
+                        }
+                    }
                 }
                 '"' => {
                     return Ok(Token {
-                        span: Span::range(start + 1, i),
+                        span: Span::range(start, i + 1),
                         ty: TokenType::String,
                     })
                 }
@@ -182,7 +191,7 @@ impl<'a> TokenIter<'a> {
     }
 }
 
-impl<'a> Iterator for TokenIter<'a> {
+impl Iterator for TokenIter<'_> {
     type Item = Result<Token, Error>;
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -354,6 +363,17 @@ impl ValueAst {
             ValueAst::Bool(b) => b.get_raw_string(s),
         }
     }
+
+    /// Returns the inner value in hte json for
+    pub fn get_str_or_number_value<'a>(&self, s: &'a str) -> Result<&'a str, Error> {
+        Ok(match self {
+            ValueAst::Number(n) => n.get_raw_string(s),
+            ValueAst::String(str) => str.value(s),
+            _ => {
+                return Err(Error::InvalidTokenType);
+            }
+        })
+    }
 }
 
 /// Parses the given JSON data and returns an AST that represents the JSON data.
@@ -458,23 +478,7 @@ pub fn parse_json(s: &str) -> Result<ValueAst, Error> {
     parse_json_inner(&mut iter)
 }
 
-pub struct LazyF64<'a>(&'a str);
-pub struct LazyU64<'a>(&'a str);
-
-impl<'a> TryInto<u64> for LazyU64<'a> {
-    type Error = ();
-    fn try_into(self) -> Result<u64, Self::Error> {
-        self.0.parse().map_err(|_| ())
-    }
-}
-
-impl<'a> TryInto<f64> for LazyF64<'a> {
-    type Error = ();
-    fn try_into(self) -> Result<f64, Self::Error> {
-        self.0.parse().map_err(|_| ())
-    }
-}
-
+#[derive(Debug)]
 pub struct PriceChange24Hr<'a> {
     pub symbol: &'a str,
     pub price_change: LazyF64<'a>,
@@ -506,8 +510,8 @@ pub fn parse_price_change_entry<'a>(
     match value {
         ValueAst::Object(object) => {
             for (k, v) in &object.elems {
-                let v = v.get_raw_string(s);
-                match k.get_raw_string(s) {
+                let v = v.get_str_or_number_value(s)?;
+                match k.value(s) {
                     "symbol" => unsafe {
                         std::ptr::addr_of_mut!((*entry_ptr).symbol).write(v);
                     },
@@ -574,7 +578,7 @@ pub fn parse_price_change_entry<'a>(
     }
 }
 
-pub fn parse_custom(s: &str) -> Result<Vec<PriceChange24Hr>, Error> {
+pub fn parse(s: &str) -> Result<Vec<PriceChange24Hr>, Error> {
     let data = parse_json(s)?;
 
     match data {
@@ -589,248 +593,248 @@ pub fn parse_custom(s: &str) -> Result<Vec<PriceChange24Hr>, Error> {
     }
 }
 
-// #[cfg(test)]
-// mod test {
+#[cfg(test)]
+mod test {
 
-//     use super::*;
+    use super::*;
 
-//     #[test]
-//     fn test_tokenization() {
-//         let mut iter = TokenIter::new(r#"{ "type": 1, } [ ]"#);
+    #[test]
+    fn test_tokenization() {
+        let mut iter = TokenIter::new(r#"{ "type": 1, } [ ]"#);
 
-//         assert!(matches!(
-//             iter.next(),
-//             Some(Ok(Token {
-//                 span: Span(0, 1),
-//                 ty: TokenType::Lbrace
-//             }))
-//         ));
+        assert!(matches!(
+            iter.next(),
+            Some(Ok(Token {
+                span: Span(0, 1),
+                ty: TokenType::Lbrace
+            }))
+        ));
 
-//         assert!(matches!(
-//             iter.next(),
-//             Some(Ok(Token {
-//                 span: Span(2, 8),
-//                 ty: TokenType::String
-//             }))
-//         ));
+        assert!(matches!(
+            iter.next(),
+            Some(Ok(Token {
+                span: Span(2, 8),
+                ty: TokenType::String
+            }))
+        ));
 
-//         assert!(matches!(
-//             iter.next(),
-//             Some(Ok(Token {
-//                 span: Span(8, 9),
-//                 ty: TokenType::Colon
-//             }))
-//         ));
+        assert!(matches!(
+            iter.next(),
+            Some(Ok(Token {
+                span: Span(8, 9),
+                ty: TokenType::Colon
+            }))
+        ));
 
-//         assert!(matches!(
-//             iter.next(),
-//             Some(Ok(Token {
-//                 span: Span(10, 11),
-//                 ty: TokenType::Number
-//             }))
-//         ));
+        assert!(matches!(
+            iter.next(),
+            Some(Ok(Token {
+                span: Span(10, 11),
+                ty: TokenType::Number
+            }))
+        ));
 
-//         assert!(matches!(
-//             iter.next(),
-//             Some(Ok(Token {
-//                 span: Span(11, 12),
-//                 ty: TokenType::Comma
-//             }))
-//         ));
+        assert!(matches!(
+            iter.next(),
+            Some(Ok(Token {
+                span: Span(11, 12),
+                ty: TokenType::Comma
+            }))
+        ));
 
-//         assert!(matches!(
-//             iter.next(),
-//             Some(Ok(Token {
-//                 span: Span(13, 14),
-//                 ty: TokenType::Rbrace
-//             }))
-//         ));
+        assert!(matches!(
+            iter.next(),
+            Some(Ok(Token {
+                span: Span(13, 14),
+                ty: TokenType::Rbrace
+            }))
+        ));
 
-//         assert!(matches!(
-//             iter.next(),
-//             Some(Ok(Token {
-//                 span: Span(15, 16),
-//                 ty: TokenType::Lbracket
-//             }))
-//         ));
+        assert!(matches!(
+            iter.next(),
+            Some(Ok(Token {
+                span: Span(15, 16),
+                ty: TokenType::Lbracket
+            }))
+        ));
 
-//         assert!(matches!(
-//             iter.next(),
-//             Some(Ok(Token {
-//                 span: Span(17, 18),
-//                 ty: TokenType::Rbracket
-//             }))
-//         ));
+        assert!(matches!(
+            iter.next(),
+            Some(Ok(Token {
+                span: Span(17, 18),
+                ty: TokenType::Rbracket
+            }))
+        ));
 
-//         assert!(matches!(iter.next(), None));
-//     }
+        assert!(matches!(iter.next(), None));
+    }
 
-//     #[test]
-//     fn test_parsing_string() {
-//         let input = r#""Hello!", {}"#;
-//         let value = parse_json(input).unwrap();
+    #[test]
+    fn test_parsing_string() {
+        let input = r#""Hello!", {}"#;
+        let value = parse_json(input).unwrap();
 
-//         assert!(matches!(
-//             value,
-//             ValueAst::String(StringAst(Token {
-//                 span: Span(0, 8),
-//                 ty: TokenType::String
-//             }))
-//         ));
+        assert!(matches!(
+            value,
+            ValueAst::String(StringAst(Token {
+                span: Span(0, 8),
+                ty: TokenType::String
+            }))
+        ));
 
-//         match value {
-//             ValueAst::String(s) => {
-//                 assert_eq!(s.value(input), "Hello!");
-//             }
-//             _ => panic!("Unexpected type!"),
-//         }
-//     }
+        match value {
+            ValueAst::String(s) => {
+                assert_eq!(s.value(input), "Hello!");
+            }
+            _ => panic!("Unexpected type!"),
+        }
+    }
 
-//     #[test]
-//     fn test_parsing_number() {
-//         let value = parse_json(r#"-1234.324,"#).unwrap();
+    #[test]
+    fn test_parsing_number() {
+        let value = parse_json(r#"-1234.324,"#).unwrap();
 
-//         assert!(matches!(
-//             value,
-//             ValueAst::Number(NumberAst(Token {
-//                 span: Span(0, 9),
-//                 ty: TokenType::Number
-//             }))
-//         ));
-//     }
+        assert!(matches!(
+            value,
+            ValueAst::Number(NumberAst(Token {
+                span: Span(0, 9),
+                ty: TokenType::Number
+            }))
+        ));
+    }
 
-//     #[test]
-//     fn test_parsing_true() {
-//         let value = parse_json(r#"true,"#).unwrap();
+    #[test]
+    fn test_parsing_true() {
+        let value = parse_json(r#"true,"#).unwrap();
 
-//         assert!(matches!(
-//             value,
-//             ValueAst::Bool(BoolAst(Token {
-//                 span: Span(0, 4),
-//                 ty: TokenType::True
-//             }))
-//         ));
-//     }
+        assert!(matches!(
+            value,
+            ValueAst::Bool(BoolAst(Token {
+                span: Span(0, 4),
+                ty: TokenType::True
+            }))
+        ));
+    }
 
-//     #[test]
-//     fn test_parsing_false() {
-//         let value = parse_json(r#"false,"#).unwrap();
+    #[test]
+    fn test_parsing_false() {
+        let value = parse_json(r#"false,"#).unwrap();
 
-//         assert!(matches!(
-//             value,
-//             ValueAst::Bool(BoolAst(Token {
-//                 span: Span(0, 5),
-//                 ty: TokenType::False
-//             }))
-//         ));
-//     }
+        assert!(matches!(
+            value,
+            ValueAst::Bool(BoolAst(Token {
+                span: Span(0, 5),
+                ty: TokenType::False
+            }))
+        ));
+    }
 
-//     #[test]
-//     fn test_parsing_null() {
-//         let value = parse_json(r#"null,"#).unwrap();
+    #[test]
+    fn test_parsing_null() {
+        let value = parse_json(r#"null,"#).unwrap();
 
-//         assert!(matches!(
-//             value,
-//             ValueAst::Null(NullAst(Token {
-//                 span: Span(0, 4),
-//                 ty: TokenType::Null
-//             }))
-//         ));
-//     }
+        assert!(matches!(
+            value,
+            ValueAst::Null(NullAst(Token {
+                span: Span(0, 4),
+                ty: TokenType::Null
+            }))
+        ));
+    }
 
-//     #[test]
-//     fn test_parsing_array() {
-//         let value = parse_json(r#"[null, true, false, "test", 123], {}"#).unwrap();
+    #[test]
+    fn test_parsing_array() {
+        let value = parse_json(r#"[null, true, false, "test", 123], {}"#).unwrap();
 
-//         let ValueAst::Array(array) = value else {
-//             panic!("Value is not an array: {value:?}");
-//         };
+        let ValueAst::Array(array) = value else {
+            panic!("Value is not an array: {value:?}");
+        };
 
-//         assert_eq!(array.span.0, 0);
-//         assert_eq!(array.span.1, 32);
+        assert_eq!(array.span.0, 0);
+        assert_eq!(array.span.1, 32);
 
-//         assert_eq!(array.elems.len(), 5);
+        assert_eq!(array.elems.len(), 5);
 
-//         assert!(matches!(
-//             array.elems[0],
-//             ValueAst::Null(NullAst(Token {
-//                 span: Span(1, 5),
-//                 ty: TokenType::Null
-//             }))
-//         ));
+        assert!(matches!(
+            array.elems[0],
+            ValueAst::Null(NullAst(Token {
+                span: Span(1, 5),
+                ty: TokenType::Null
+            }))
+        ));
 
-//         assert!(matches!(
-//             array.elems[1],
-//             ValueAst::Bool(BoolAst(Token {
-//                 span: Span(7, 11),
-//                 ty: TokenType::True
-//             }))
-//         ));
+        assert!(matches!(
+            array.elems[1],
+            ValueAst::Bool(BoolAst(Token {
+                span: Span(7, 11),
+                ty: TokenType::True
+            }))
+        ));
 
-//         assert!(matches!(
-//             array.elems[2],
-//             ValueAst::Bool(BoolAst(Token {
-//                 span: Span(13, 18),
-//                 ty: TokenType::False
-//             }))
-//         ));
+        assert!(matches!(
+            array.elems[2],
+            ValueAst::Bool(BoolAst(Token {
+                span: Span(13, 18),
+                ty: TokenType::False
+            }))
+        ));
 
-//         assert!(matches!(
-//             array.elems[3],
-//             ValueAst::String(StringAst(Token {
-//                 span: Span(20, 26),
-//                 ty: TokenType::String
-//             }))
-//         ));
+        assert!(matches!(
+            array.elems[3],
+            ValueAst::String(StringAst(Token {
+                span: Span(20, 26),
+                ty: TokenType::String
+            }))
+        ));
 
-//         assert!(matches!(
-//             array.elems[4],
-//             ValueAst::Number(NumberAst(Token {
-//                 span: Span(28, 31),
-//                 ty: TokenType::Number
-//             }))
-//         ));
-//     }
+        assert!(matches!(
+            array.elems[4],
+            ValueAst::Number(NumberAst(Token {
+                span: Span(28, 31),
+                ty: TokenType::Number
+            }))
+        ));
+    }
 
-//     #[test]
-//     fn test_parsing_object() {
-//         let value = parse_json(r#"{"hi":null, "hello":true}"#).unwrap();
+    #[test]
+    fn test_parsing_object() {
+        let value = parse_json(r#"{"hi":null, "hello":true}"#).unwrap();
 
-//         let ValueAst::Object(object) = value else {
-//             panic!("Value is not an object: {value:?}");
-//         };
+        let ValueAst::Object(object) = value else {
+            panic!("Value is not an object: {value:?}");
+        };
 
-//         assert_eq!(object.span.0, 0);
-//         assert_eq!(object.span.1, 25);
+        assert_eq!(object.span.0, 0);
+        assert_eq!(object.span.1, 25);
 
-//         assert_eq!(object.elems.len(), 2);
+        assert_eq!(object.elems.len(), 2);
 
-//         assert!(matches!(
-//             object.elems[0],
-//             (
-//                 StringAst(Token {
-//                     span: Span(1, 5),
-//                     ty: TokenType::String
-//                 }),
-//                 ValueAst::Null(NullAst(Token {
-//                     span: Span(6, 10),
-//                     ty: TokenType::Null
-//                 }))
-//             )
-//         ));
+        assert!(matches!(
+            object.elems[0],
+            (
+                StringAst(Token {
+                    span: Span(1, 5),
+                    ty: TokenType::String
+                }),
+                ValueAst::Null(NullAst(Token {
+                    span: Span(6, 10),
+                    ty: TokenType::Null
+                }))
+            )
+        ));
 
-//         assert!(matches!(
-//             object.elems[1],
-//             (
-//                 StringAst(Token {
-//                     span: Span(12, 19),
-//                     ty: TokenType::String
-//                 }),
-//                 ValueAst::Bool(BoolAst(Token {
-//                     span: Span(20, 24),
-//                     ty: TokenType::True
-//                 }))
-//             )
-//         ));
-//     }
-// }
+        assert!(matches!(
+            object.elems[1],
+            (
+                StringAst(Token {
+                    span: Span(12, 19),
+                    ty: TokenType::String
+                }),
+                ValueAst::Bool(BoolAst(Token {
+                    span: Span(20, 24),
+                    ty: TokenType::True
+                }))
+            )
+        ));
+    }
+}
