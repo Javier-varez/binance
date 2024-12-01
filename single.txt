@@ -1,0 +1,1 @@
+[{"symbol":"BTC-241206-115000-C","priceChange":"-45","priceChangePercent":"-0.4736","lastPrice":"50","lastQty":"0.1","open":"95","high":"95","low":"50","volume":"17.56","amount":"1282.55","bidPrice":"50","askPrice":"60","openTime":1732905664238,"closeTime":1732980312615,"firstTradeId":314,"tradeCount":77,"strikePrice":"115000","exercisePrice":"96638.25170213"}]
