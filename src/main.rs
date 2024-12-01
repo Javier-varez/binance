@@ -1,9 +1,6 @@
 fn get_ticker_price_change(base_endpoint: &str) -> anyhow::Result<String> {
     let ticker_endpoint = format!("{base_endpoint}/eapi/v1/ticker");
     let request = reqwest::blocking::get(ticker_endpoint)?;
-    for (k, v) in request.headers().iter() {
-        println!("{k:?}: {v:?}");
-    }
     let request = request.error_for_status()?;
 
     Ok(request.text()?)
@@ -11,6 +8,26 @@ fn get_ticker_price_change(base_endpoint: &str) -> anyhow::Result<String> {
 
 fn main() -> anyhow::Result<()> {
     let endpoint_result = get_ticker_price_change("https://eapi.binance.com")?;
+
+    let price_changes = binance::serde::parse(&endpoint_result)?;
+    for i in &price_changes {
+        println!("{:#?}", i);
+    }
+
+    let price_changes = binance::serde_borrowed::parse(&endpoint_result)?;
+    for i in &price_changes {
+        println!("{:#?}", i);
+    }
+
+    let price_changes = binance::serde_lazy::parse(&endpoint_result)?;
+    for i in &price_changes {
+        println!("{:#?}", i);
+    }
+
+    let price_changes = binance::sonic::parse(&endpoint_result)?;
+    for i in &price_changes {
+        println!("{:#?}", i);
+    }
 
     let price_changes = binance::custom::parse(&endpoint_result)?;
     for i in &price_changes {

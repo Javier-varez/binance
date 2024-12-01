@@ -1,4 +1,4 @@
-#[derive(serde::Deserialize)]
+#[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PriceChange24Hr<'a> {
     pub symbol: &'a str,
@@ -21,10 +21,7 @@ pub struct PriceChange24Hr<'a> {
     pub exercise_price: &'a str,
 }
 
-/// This slightly improved parsing function returns an array that borrows all
-/// the data. It performs an allocation for every string in the PriceChange24Hr
-/// struct. It also eagerly parses most fields, except for those numeric fields
-/// inside json strings.
+/// Parses the data returned by the `GET /eapi/v1/ticker` endpoint
 pub fn parse(data: &str) -> anyhow::Result<Vec<PriceChange24Hr>> {
     Ok(serde_json::from_str(data)?)
 }

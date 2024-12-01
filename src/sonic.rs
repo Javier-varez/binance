@@ -1,6 +1,6 @@
 use crate::utils::LazyF64;
 
-#[derive(sonic_rs::Deserialize)]
+#[derive(Debug, sonic_rs::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PriceChange24Hr<'a> {
     pub symbol: &'a str,
@@ -23,8 +23,7 @@ pub struct PriceChange24Hr<'a> {
     pub exercise_price: LazyF64<'a>,
 }
 
-/// This naive parsing function returns an array that owns all the data.
-/// It eagerly parses all fields.
+/// Parses the data returned by the `GET /eapi/v1/ticker` endpoint
 pub fn parse(data: &str) -> anyhow::Result<Vec<PriceChange24Hr>> {
     Ok(sonic_rs::from_str(data)?)
 }

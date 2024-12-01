@@ -65,6 +65,7 @@ pub mod serde_borrowed;
 pub mod serde_lazy;
 
 /// An improvement over `serde_lazy` that uses the sonic-rs library instead of serde.
+///
 /// This library benefits from SIMD operations during parsing. Apart from this, it implements the
 /// same solution as `serde_lazy`.
 ///
@@ -84,6 +85,7 @@ pub mod serde_lazy;
 pub mod sonic;
 
 /// Implements a custom hand-crafted JSON parser that constructs a JSON AST in memory.
+///
 /// I reused most of this code from a personal project (git-dashboard), which is not yet publicly
 /// available.
 /// This parser performs (unsurprisingly) poorly when compared to more mature solutions like serde

@@ -317,6 +317,7 @@ impl StringAst {
 }
 
 #[derive(Debug, Clone)]
+/// A Json null as an AST element.
 pub struct NullAst(Token);
 
 impl NullAst {
@@ -329,6 +330,7 @@ impl NullAst {
 }
 
 #[derive(Debug, Clone)]
+/// A Json bool as an AST element.
 pub struct BoolAst(Token);
 
 impl BoolAst {
@@ -578,6 +580,7 @@ pub fn parse_price_change_entry<'a>(
     }
 }
 
+/// Parses the data returned by the `GET /eapi/v1/ticker` endpoint
 pub fn parse(s: &str) -> Result<Vec<PriceChange24Hr>, Error> {
     let data = parse_json(s)?;
 
