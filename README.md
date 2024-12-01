@@ -28,7 +28,7 @@ Build the library with:
 cargo build --release
 ```
 
-Run tests with: 
+Run the binary with: 
 ```shell
 cargo run --release
 ```
